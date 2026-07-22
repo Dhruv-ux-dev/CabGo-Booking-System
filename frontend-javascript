@@ -1,0 +1,889 @@
+let currentUser = null
+let selectedDriverId = null
+
+const distanceMap = {
+    "Patiala-Chandigarh":70,
+    "Delhi-Noida":25,
+    "Mohali-Chandigarh":15,
+    "Delhi-Gurgaon":35,
+    "Patiala-Delhi":250,
+    "Jaipur-Delhi":280,
+    "Delhi-Chandigarh":240,
+    "Mohali-Delhi":260
+}
+
+const locations = [
+    "Patiala",
+    "Chandigarh",
+    "Delhi",
+    "Noida",
+    "Mohali",
+    "Gurgaon",
+    "Jaipur"
+]
+
+function showRegister(){
+    document.getElementById(
+        'loginPage'
+    ).style.display = 'none'
+
+    document.getElementById(
+        'registerPage'
+    ).style.display = 'flex'
+}
+
+async function register(){
+    try{
+        const response = await fetch(
+            'http://127.0.0.1:5000/register',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    phone:
+                    document.getElementById(
+                        'registerPhone'
+                    ).value,
+
+                    password:
+                    document.getElementById(
+                        'registerPassword'
+                    ).value
+                })
+            }
+        )
+
+        const data = await response.json()
+
+        alert(data.message)
+
+        if(data.success){
+            location.reload()
+        }
+
+    }catch(error){
+        alert('Server Error')
+    }
+}
+
+async function login(){
+    try{
+        const response = await fetch(
+            'http://127.0.0.1:5000/login',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    phone:
+                    document.getElementById(
+                        'phone'
+                    ).value,
+
+                    password:
+                    document.getElementById(
+                        'password'
+                    ).value
+                })
+            }
+        )
+
+        const data = await response.json()
+
+        if(data.success){
+            currentUser = data.user
+
+            document.getElementById(
+                'loginPage'
+            ).style.display = 'none'
+
+            document.getElementById(
+                'dashboard'
+            ).style.display = 'block'
+
+            document.getElementById(
+                'welcomeText'
+            ).innerHTML = `Welcome`
+
+            document.getElementById(
+                'profilePhone'
+            ).innerHTML =
+            currentUser.phone
+
+            showSection(
+                'dashboardSection'
+            )
+
+            loadDrivers()
+            loadStats()
+            loadRides()
+            loadPayments()
+
+        }else{
+            alert(data.message)
+        }
+
+    }catch(error){
+        console.log(error)
+        alert('Server Error')
+    }
+}
+
+function showSection(sectionId){
+    const sections = [
+        'dashboardSection',
+        'bookRideSection',
+        'paymentSection',
+        'rideHistorySection'
+    ]
+
+    sections.forEach((section)=>{
+        document.getElementById(
+            section
+        ).style.display = 'none'
+    })
+
+    document.getElementById(
+        sectionId
+    ).style.display = 'block'
+}
+
+function openAdminPanel(){
+    const password =
+    document.getElementById(
+        'adminPassword'
+    ).value
+
+    if(password === 'admin123'){
+        document.getElementById(
+            'loginPage'
+        ).style.display = 'none'
+
+        document.getElementById(
+            'adminPortal'
+        ).style.display = 'block'
+
+        loadAdminDrivers()
+
+    }else{
+        alert('Wrong Password')
+    }
+}
+
+function closeAdminPortal(){
+    document.getElementById(
+        'adminPortal'
+    ).style.display = 'none'
+
+    document.getElementById(
+        'loginPage'
+    ).style.display = 'flex'
+}
+
+function showSuggestions(type){
+    const input =
+    document.getElementById(type)
+
+    const suggestionBox =
+    document.getElementById(
+        `${type}Suggestions`
+    )
+
+    const value =
+    input.value.toLowerCase()
+
+    suggestionBox.innerHTML = ''
+
+    if(value === ''){
+        return
+    }
+
+    const filtered = locations.filter(
+        (location)=>
+        location
+        .toLowerCase()
+        .includes(value)
+    )
+
+    filtered.forEach((location)=>{
+        suggestionBox.innerHTML += `
+        <div
+        class="suggestion-item"
+        onclick="selectLocation(
+            '${type}',
+            '${location}'
+        )">
+
+        ${location}
+
+        </div>
+        `
+    })
+}
+
+function selectLocation(type,location){
+    document.getElementById(
+        type
+    ).value = location
+
+    document.getElementById(
+        `${type}Suggestions`
+    ).innerHTML = ''
+
+    calculateRide()
+}
+
+async function loadDrivers(){
+    try{
+        const response = await fetch(
+            'http://127.0.0.1:5000/drivers'
+        )
+
+        const drivers = await response.json()
+
+        const container =
+        document.getElementById(
+            'driverList'
+        )
+
+        container.innerHTML = ''
+
+        const availableDrivers = drivers.filter(
+            (driver)=>
+            driver.status === 'AVAILABLE'
+        )
+
+        if(availableDrivers.length === 0){
+            container.innerHTML = `
+            <div class="ride-card">
+
+                <h2>
+                No Drivers Available
+                </h2>
+
+            </div>
+            `
+
+            return
+        }
+
+        availableDrivers.forEach((driver)=>{
+            container.innerHTML += `
+            <div
+            class="driver-option"
+            onclick="selectDriver(
+                ${driver.id},
+                this
+            )">
+
+                <div class="driver-left">
+
+                    <h3>
+                    ${driver.name}
+                    </h3>
+
+                    <p>
+                    ${driver.cab_name}
+                    •
+                    ${driver.cab_number}
+                    </p>
+
+                </div>
+
+                <div class="driver-right">
+
+                    <div class="driver-rating">
+                    ⭐ ${driver.rating}
+                    </div>
+
+                    <p>
+                    Available
+                    </p>
+
+                </div>
+
+            </div>
+            `
+        })
+
+    }catch(error){
+        console.log(error)
+    }
+}
+
+function selectDriver(id,element){
+    selectedDriverId = id
+
+    document
+    .querySelectorAll('.driver-option')
+    .forEach((driver)=>{
+        driver.classList.remove(
+            'active'
+        )
+    })
+
+    element.classList.add(
+        'active'
+    )
+}
+
+function calculateRide(){
+    const pickup =
+    document.getElementById(
+        'pickup'
+    ).value.trim()
+
+    const destination =
+    document.getElementById(
+        'destination'
+    ).value.trim()
+
+    if(
+        pickup === '' ||
+        destination === ''
+    ){
+        document.getElementById(
+            'distanceText'
+        ).innerHTML = '0 KM'
+
+        document.getElementById(
+            'fareText'
+        ).innerHTML = '₹0'
+
+        return
+    }
+
+    const key1 =
+    `${pickup}-${destination}`
+
+    const key2 =
+    `${destination}-${pickup}`
+
+    let distance =
+        distanceMap[key1] ||
+        distanceMap[key2]
+
+    if(!distance){
+        distance = 50
+    }
+
+    const fare = distance * 15
+
+    document.getElementById(
+        'distanceText'
+    ).innerHTML =
+    `${distance} KM`
+
+    document.getElementById(
+        'fareText'
+    ).innerHTML =
+    `₹${fare}`
+}
+
+async function bookRide(){
+    try{
+        const pickup =
+        document.getElementById(
+            'pickup'
+        ).value
+
+        const destination =
+        document.getElementById(
+            'destination'
+        ).value
+
+        if(
+            pickup === '' ||
+            destination === ''
+        ){
+            alert('Enter Locations')
+            return
+        }
+
+        if(selectedDriverId === null){
+            alert('Select Driver')
+            return
+        }
+
+        const key1 =
+        `${pickup}-${destination}`
+
+        const key2 =
+        `${destination}-${pickup}`
+
+        let distance =
+            distanceMap[key1] ||
+            distanceMap[key2]
+
+        if(!distance){
+            distance = 50
+        }
+
+        const response = await fetch(
+            'http://127.0.0.1:5000/book-ride',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    user_id:
+                    currentUser.id,
+
+                    driver_id:
+                    selectedDriverId,
+
+                    pickup:
+                    pickup,
+
+                    destination:
+                    destination,
+
+                    distance_km:
+                    distance
+                })
+            }
+        )
+
+        const data = await response.json()
+
+        alert(data.message)
+
+        if(data.success){
+            selectedDriverId = null
+
+            document.getElementById(
+                'pickup'
+            ).value = ''
+
+            document.getElementById(
+                'destination'
+            ).value = ''
+
+            document.getElementById(
+                'distanceText'
+            ).innerHTML = '0 KM'
+
+            document.getElementById(
+                'fareText'
+            ).innerHTML = '₹0'
+
+            loadDrivers()
+            loadPayments()
+            loadRides()
+            loadStats()
+        }
+
+    }catch(error){
+        console.log(error)
+        alert('Booking Failed')
+    }
+}
+
+async function loadPayments(){
+    const response = await fetch(
+        `http://127.0.0.1:5000/rides/${currentUser.id}`
+    )
+
+    const rides = await response.json()
+
+    const container =
+    document.getElementById(
+        'paymentList'
+    )
+
+    container.innerHTML = ''
+
+    rides.forEach((ride)=>{
+        if(ride.status === 'ACTIVE'){
+            container.innerHTML += `
+            <div class="ride-card">
+
+                <h2 class="text-2xl font-semibold">
+                ${ride.pickup}
+                →
+                ${ride.destination}
+                </h2>
+
+                <p class="muted mt-2">
+                Driver:
+                ${ride.driver_name}
+                </p>
+
+                <p class="muted mt-2">
+                Amount:
+                ₹${ride.fare}
+                </p>
+
+                <select
+                id="payment-${ride.id}"
+                class="input-box mt-5">
+
+                    <option value="UPI">
+                    UPI
+                    </option>
+
+                    <option value="Cash">
+                    Cash
+                    </option>
+
+                </select>
+
+                <select
+                id="rating-${ride.id}"
+                class="input-box mt-5">
+
+                    <option value="5">
+                    5 Stars
+                    </option>
+
+                    <option value="4">
+                    4 Stars
+                    </option>
+
+                    <option value="3">
+                    3 Stars
+                    </option>
+
+                    <option value="2">
+                    2 Stars
+                    </option>
+
+                    <option value="1">
+                    1 Star
+                    </option>
+
+                </select>
+
+                <div class="flex gap-4 mt-5">
+
+                    <button
+                    onclick="completeRide(
+                        ${ride.id},
+                        ${ride.driver_id}
+                    )"
+                    class="primary-btn">
+
+                    Pay & Complete
+
+                    </button>
+
+                    <button
+                    onclick="cancelRide(
+                        ${ride.id},
+                        ${ride.driver_id}
+                    )"
+                    class="logout-btn">
+
+                    Cancel Ride
+
+                    </button>
+
+                </div>
+
+            </div>
+            `
+        }
+    })
+}
+
+async function completeRide(
+    rideId,
+    driverId
+){
+    try{
+        const rating =
+        document.getElementById(
+            `rating-${rideId}`
+        ).value
+
+        const paymentMethod =
+        document.getElementById(
+            `payment-${rideId}`
+        ).value
+
+        const response = await fetch(
+            `http://127.0.0.1:5000/complete-ride/${rideId}`,
+            {
+                method:'PUT',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    driver_id:Number(driverId),
+                    rating:Number(rating),
+                    payment_method:paymentMethod
+                })
+            }
+        )
+
+        const data = await response.json()
+
+        alert(data.message)
+
+        loadDrivers()
+        loadPayments()
+        loadRides()
+        loadStats()
+
+    }catch(error){
+        alert('Payment Failed')
+    }
+}
+
+async function cancelRide(
+    rideId,
+    driverId
+){
+    try{
+        await fetch(
+            `http://127.0.0.1:5000/cancel-ride/${rideId}`,
+            {
+                method:'PUT',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    driver_id:
+                    driverId
+                })
+            }
+        )
+
+        alert('Ride Cancelled')
+
+        loadDrivers()
+        loadPayments()
+        loadRides()
+        loadStats()
+
+    }catch(error){
+        alert('Cancel Failed')
+    }
+}
+
+async function loadRides(){
+    const response = await fetch(
+        `http://127.0.0.1:5000/rides/${currentUser.id}`
+    )
+
+    const rides = await response.json()
+
+    const container =
+    document.getElementById(
+        'rideHistory'
+    )
+
+    container.innerHTML = ''
+
+    if(rides.length === 0){
+        container.innerHTML = `
+        <div class="ride-card">
+
+            <h2>
+            No Ride History
+            </h2>
+
+        </div>
+        `
+
+        return
+    }
+
+    rides.forEach((ride)=>{
+        let statusClass = ''
+
+        if(ride.status === 'ACTIVE'){
+            statusClass = 'active'
+        }
+
+        if(ride.status === 'COMPLETED'){
+            statusClass = 'completed'
+        }
+
+        if(ride.status === 'CANCELLED'){
+            statusClass = 'cancelled'
+        }
+
+        container.innerHTML += `
+        <div class="ride-card">
+
+            <h2 class="text-2xl font-semibold">
+            ${ride.pickup}
+            →
+            ${ride.destination}
+            </h2>
+
+            <p class="muted mt-2">
+            Driver:
+            ${ride.driver_name}
+            </p>
+
+            <p class="muted mt-2">
+            Fare:
+            ₹${ride.fare}
+            </p>
+
+            <div class="status-tag ${statusClass}">
+            ${ride.status}
+            </div>
+
+        </div>
+        `
+    })
+}
+
+async function loadStats(){
+    const response = await fetch(
+        `http://127.0.0.1:5000/stats/${currentUser.id}`
+    )
+
+    const stats = await response.json()
+
+    document.getElementById(
+        'totalRides'
+    ).innerHTML =
+    stats.total_rides
+
+    document.getElementById(
+        'spent'
+    ).innerHTML =
+    `₹${stats.spent}`
+
+    document.getElementById(
+        'totalDrivers'
+    ).innerHTML =
+    stats.total_drivers
+}
+
+async function loadAdminDrivers(){
+    const response = await fetch(
+        'http://127.0.0.1:5000/drivers'
+    )
+
+    const drivers = await response.json()
+
+    const container =
+    document.getElementById(
+        'adminDrivers'
+    )
+
+    container.innerHTML = ''
+
+    drivers.forEach((driver)=>{
+        container.innerHTML += `
+        <div class="ride-card">
+
+            <h2 class="text-2xl font-semibold">
+            ${driver.name}
+            </h2>
+
+            <p class="muted mt-2">
+            ${driver.cab_name}
+            </p>
+
+            <p class="muted mt-2">
+            ${driver.cab_number}
+            </p>
+
+            <p class="muted mt-2">
+            ⭐ ${driver.rating}
+            </p>
+
+            <button
+            onclick="deleteDriver(${driver.id})"
+            class="logout-btn mt-5">
+
+            Remove Driver
+
+            </button>
+
+        </div>
+        `
+    })
+}
+
+async function addDriver(){
+    try{
+        const response = await fetch(
+            'http://127.0.0.1:5000/add-driver',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':'application/json'
+                },
+
+                body:JSON.stringify({
+                    name:
+                    document.getElementById(
+                        'driverName'
+                    ).value,
+
+                    cab_name:
+                    document.getElementById(
+                        'cabName'
+                    ).value,
+
+                    cab_number:
+                    document.getElementById(
+                        'cabNumber'
+                    ).value
+                })
+            }
+        )
+
+        const data = await response.json()
+
+        alert(data.message)
+
+        if(data.success){
+            loadAdminDrivers()
+            loadDrivers()
+
+            document.getElementById(
+                'driverName'
+            ).value = ''
+
+            document.getElementById(
+                'cabName'
+            ).value = ''
+
+            document.getElementById(
+                'cabNumber'
+            ).value = ''
+        }
+
+    }catch(error){
+        alert('Error Adding Driver')
+    }
+}
+
+async function deleteDriver(id){
+    await fetch(
+        `http://127.0.0.1:5000/delete-driver/${id}`,
+        {
+            method:'DELETE'
+        }
+    )
+
+    loadAdminDrivers()
+    loadDrivers()
+}
+
+function logout(){
+    location.reload()
+}
