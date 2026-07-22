@@ -1,0 +1,654 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import mysql.connector
+import traceback
+
+app = Flask(__name__)
+CORS(app)
+
+def create_connection():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="Dbmstiet#28",
+        database="cab_booking",
+        autocommit=True,
+        connection_timeout=30
+    )
+
+def safe_close(cursor, db):
+    try:
+        cursor.close()
+    except:
+        pass
+
+    try:
+        db.close()
+    except:
+        pass
+
+@app.route('/')
+def home():
+    return "CabGo Backend Running"
+
+@app.route('/register', methods=['POST'])
+def register():
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        phone = data.get('phone')
+        password = data.get('password')
+
+        if not phone or not password:
+            safe_close(cursor, db)
+
+            return jsonify({
+                "success": False,
+                "message": "Fill all fields"
+            })
+
+        cursor.execute(
+            """
+            INSERT INTO users(
+                phone,
+                password
+            )
+            VALUES(%s,%s)
+            """,
+            (
+                phone,
+                password
+            )
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True,
+            "message": "Account Created"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+@app.route('/login', methods=['POST'])
+def login():
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM users
+            WHERE phone=%s
+            AND password=%s
+            """,
+            (
+                data['phone'],
+                data['password']
+            )
+        )
+
+        user = cursor.fetchone()
+
+        safe_close(cursor, db)
+
+        if user:
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": user['id'],
+                    "phone": user['phone']
+                }
+            })
+
+        return jsonify({
+            "success": False,
+            "message": "Invalid Credentials"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+@app.route('/drivers')
+def get_drivers():
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        cursor.execute(
+            """
+            SELECT
+            drivers.id,
+            drivers.name,
+            drivers.status,
+            drivers.rating,
+            cabs.cab_name,
+            cabs.cab_number
+            FROM drivers
+            LEFT JOIN cabs
+            ON drivers.id = cabs.driver_id
+            ORDER BY drivers.id DESC
+            """
+        )
+
+        drivers = cursor.fetchall()
+
+        safe_close(cursor, db)
+
+        return jsonify(drivers)
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify([])
+
+@app.route('/add-driver', methods=['POST'])
+def add_driver():
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        if (
+            data['name'] == '' or
+            data['cab_name'] == '' or
+            data['cab_number'] == ''
+        ):
+            safe_close(cursor, db)
+
+            return jsonify({
+                "success": False,
+                "message": "Fill all fields"
+            })
+
+        cursor.execute(
+            """
+            INSERT INTO drivers(
+                name,
+                status,
+                rating
+            )
+            VALUES(%s,%s,%s)
+            """,
+            (
+                data['name'],
+                'AVAILABLE',
+                5
+            )
+        )
+
+        driver_id = cursor.lastrowid
+
+        cursor.execute(
+            """
+            INSERT INTO cabs(
+                driver_id,
+                cab_name,
+                cab_number,
+                fare_per_km
+            )
+            VALUES(%s,%s,%s,%s)
+            """,
+            (
+                driver_id,
+                data['cab_name'],
+                data['cab_number'],
+                15
+            )
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True,
+            "message": "Driver Added Successfully"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+@app.route('/delete-driver/<int:id>', methods=['DELETE'])
+def delete_driver(id):
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        cursor.execute(
+            """
+            DELETE FROM cabs
+            WHERE driver_id=%s
+            """,
+            (id,)
+        )
+
+        cursor.execute(
+            """
+            DELETE FROM drivers
+            WHERE id=%s
+            """,
+            (id,)
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False
+        })
+
+@app.route('/book-ride', methods=['POST'])
+def book_ride():
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM drivers
+            WHERE id=%s
+            """,
+            (
+                int(data['driver_id']),
+            )
+        )
+
+        driver = cursor.fetchone()
+
+        if not driver:
+            safe_close(cursor, db)
+
+            return jsonify({
+                "success": False,
+                "message": "Driver Not Found"
+            })
+
+        if driver['status'] != 'AVAILABLE':
+            safe_close(cursor, db)
+
+            return jsonify({
+                "success": False,
+                "message": "Driver Busy"
+            })
+
+        distance = int(data['distance_km'])
+        fare = distance * 15
+
+        cursor.execute(
+            """
+            INSERT INTO rides(
+                user_id,
+                driver_id,
+                pickup,
+                destination,
+                distance_km,
+                fare,
+                status
+            )
+            VALUES(%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                int(data['user_id']),
+                int(data['driver_id']),
+                data['pickup'],
+                data['destination'],
+                distance,
+                fare,
+                'ACTIVE'
+            )
+        )
+
+        ride_id = cursor.lastrowid
+
+        cursor.execute(
+            """
+            INSERT INTO payments(
+                ride_id,
+                amount,
+                payment_status,
+                payment_method,
+                rating
+            )
+            VALUES(%s,%s,%s,%s,%s)
+            """,
+            (
+                ride_id,
+                fare,
+                'PENDING',
+                '',
+                5
+            )
+        )
+
+        cursor.execute(
+            """
+            UPDATE drivers
+            SET status='BUSY'
+            WHERE id=%s
+            """,
+            (
+                int(data['driver_id']),
+            )
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True,
+            "fare": fare,
+            "message": "Ride Booked Successfully"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+@app.route('/complete-ride/<int:id>', methods=['PUT'])
+def complete_ride(id):
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        cursor.execute(
+            """
+            UPDATE rides
+            SET status='COMPLETED'
+            WHERE id=%s
+            """,
+            (id,)
+        )
+
+        cursor.execute(
+            """
+            UPDATE payments
+            SET
+            payment_status='PAID',
+            payment_method=%s,
+            rating=%s
+            WHERE ride_id=%s
+            """,
+            (
+                data['payment_method'],
+                int(data['rating']),
+                id
+            )
+        )
+
+        cursor.execute(
+            """
+            UPDATE drivers
+            SET status='AVAILABLE'
+            WHERE id=%s
+            """,
+            (
+                int(data['driver_id']),
+            )
+        )
+
+        cursor.execute(
+            """
+            UPDATE drivers
+            SET rating=(rating + %s)/2
+            WHERE id=%s
+            """,
+            (
+                int(data['rating']),
+                int(data['driver_id'])
+            )
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True,
+            "message": "Ride Completed"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+@app.route('/cancel-ride/<int:id>', methods=['PUT'])
+def cancel_ride(id):
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        data = request.json
+
+        cursor.execute(
+            """
+            UPDATE rides
+            SET status='CANCELLED'
+            WHERE id=%s
+            """,
+            (id,)
+        )
+
+        cursor.execute(
+            """
+            UPDATE drivers
+            SET status='AVAILABLE'
+            WHERE id=%s
+            """,
+            (
+                int(data['driver_id']),
+            )
+        )
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "success": True,
+            "message": "Ride Cancelled"
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False
+        })
+
+@app.route('/rides/<int:id>')
+def get_rides(id):
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        cursor.execute(
+            """
+            SELECT
+            rides.id,
+            rides.pickup,
+            rides.destination,
+            rides.distance_km,
+            rides.fare,
+            rides.status,
+            rides.driver_id,
+            IFNULL(
+                drivers.name,
+                'Unknown'
+            ) AS driver_name
+            FROM rides
+            LEFT JOIN drivers
+            ON rides.driver_id = drivers.id
+            WHERE rides.user_id=%s
+            ORDER BY rides.id DESC
+            """,
+            (id,)
+        )
+
+        rides = cursor.fetchall()
+
+        safe_close(cursor, db)
+
+        return jsonify(rides)
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify([])
+
+@app.route('/stats/<int:id>')
+def stats(id):
+    try:
+        db = create_connection()
+
+        cursor = db.cursor(
+            dictionary=True,
+            buffered=True
+        )
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM rides
+            WHERE user_id=%s
+            """,
+            (id,)
+        )
+
+        total_rides = cursor.fetchone()['total']
+
+        cursor.execute(
+            """
+            SELECT IFNULL(
+                SUM(amount),
+                0
+            ) AS total
+            FROM payments
+            JOIN rides
+            ON payments.ride_id = rides.id
+            WHERE rides.user_id=%s
+            """,
+            (id,)
+        )
+
+        spent = cursor.fetchone()['total']
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM drivers
+            """
+        )
+
+        total_drivers = cursor.fetchone()['total']
+
+        safe_close(cursor, db)
+
+        return jsonify({
+            "total_rides": total_rides,
+            "spent": spent,
+            "total_drivers": total_drivers
+        })
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+        return jsonify({
+            "total_rides": 0,
+            "spent": 0,
+            "total_drivers": 0
+        })
+
+if __name__ == '__main__':
+    try:
+        app.run(
+            host='127.0.0.1',
+            port=5000,
+            debug=True,
+            use_reloader=False
+        )
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
