@@ -1,0 +1,230 @@
+CREATE DATABASE cab_booking;
+USE cab_booking;
+
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    phone VARCHAR(20) UNIQUE NOT NULL,
+    password VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE drivers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'AVAILABLE',
+    rating FLOAT DEFAULT 5
+);
+
+CREATE TABLE cabs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    driver_id INT,
+    cab_name VARCHAR(100),
+    cab_number VARCHAR(50),
+    fare_per_km INT DEFAULT 15,
+    FOREIGN KEY (driver_id)
+    REFERENCES drivers(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE rides (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT,
+    driver_id INT,
+    pickup VARCHAR(255),
+    destination VARCHAR(255),
+    distance_km INT,
+    fare INT,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+    FOREIGN KEY (driver_id)
+    REFERENCES drivers(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE payments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    ride_id INT,
+    amount INT,
+    payment_status VARCHAR(20) DEFAULT 'PENDING',
+    payment_method VARCHAR(20),
+    rating INT DEFAULT 5,
+    FOREIGN KEY (ride_id)
+    REFERENCES rides(id)
+    ON DELETE CASCADE
+);
+
+INSERT INTO users (phone, password)
+VALUES
+('999','123'),
+('888','111'),
+('777','222');
+
+INSERT INTO drivers (name, status, rating)
+VALUES
+('Amit','AVAILABLE',5),
+('Rohit','AVAILABLE',4.8),
+('Karan','AVAILABLE',4.9),
+('Sahil','AVAILABLE',4.7);
+
+INSERT INTO cabs (driver_id, cab_name, cab_number, fare_per_km)
+VALUES
+(1,'Swift Dzire','PB10AB1234',15),
+(2,'Baleno','PB11XY5678',15),
+(3,'Hyundai Creta','DL01PQ1111',15),
+(4,'Honda City','HR26ZX9090',15);
+
+INSERT INTO rides (
+    user_id,
+    driver_id,
+    pickup,
+    destination,
+    distance_km,
+    fare,
+    status
+)
+VALUES
+(1,1,'Patiala','Chandigarh',70,1050,'COMPLETED'),
+(1,2,'Delhi','Noida',25,375,'ACTIVE'),
+(2,3,'Mohali','Delhi',260,3900,'CANCELLED');
+
+INSERT INTO payments (
+    ride_id,
+    amount,
+    payment_status,
+    payment_method,
+    rating
+)
+VALUES
+(1,1050,'PAID','UPI',5),
+(2,375,'PENDING','',5),
+(3,3900,'FAILED','CASH',3);
+
+SELECT * FROM users;
+
+SELECT * FROM drivers;
+
+SELECT * FROM cabs;
+
+SELECT * FROM rides;
+
+SELECT * FROM payments;
+
+
+DELIMITER //
+CREATE PROCEDURE cb_login(
+    IN p_phone VARCHAR(20),
+    IN p_password VARCHAR(100)
+)
+
+BEGIN
+    IF EXISTS (
+        SELECT *
+        FROM users
+        WHERE phone = p_phone
+        AND password = p_password
+    )
+    THEN
+        SELECT 'LOGIN SUCCESSFUL' AS MESSAGE;
+    ELSE
+        SELECT 'INVALID DETAILS' AS MESSAGE;
+    END IF;
+END //
+DELIMITER ;
+DELIMITER //
+
+CREATE PROCEDURE cb_book_ride(
+    IN p_user_id INT,
+    IN p_driver_id INT,
+    IN p_pickup VARCHAR(255),
+    IN p_destination VARCHAR(255),
+    IN p_distance INT
+)
+BEGIN
+    DECLARE v_fare INT;
+    SET v_fare = p_distance * 15;
+    INSERT INTO rides(
+        user_id,
+        driver_id,
+        pickup,
+        destination,
+        distance_km,
+        fare,
+        status
+    )
+    VALUES(
+        p_user_id,
+        p_driver_id,
+        p_pickup,
+        p_destination,
+        p_distance,
+        v_fare,
+        'ACTIVE'
+    );
+    INSERT INTO payments(
+        ride_id,
+        amount,
+        payment_status,
+        payment_method
+    )
+    VALUES(
+        LAST_INSERT_ID(),
+        v_fare,
+        'PAID',
+        'UPI'
+    );
+    SELECT 'RIDE BOOKED SUCCESSFULLY' AS MESSAGE;
+END //
+DELIMITER ;
+DELIMITER //
+CREATE PROCEDURE cb_complete_ride(
+    IN p_ride_id INT
+)
+BEGIN
+    UPDATE rides
+    SET status = 'COMPLETED'
+    WHERE id = p_ride_id;
+    SELECT 'RIDE COMPLETED' AS MESSAGE;
+END //
+DELIMITER ;
+DELIMITER //
+CREATE TRIGGER trg_driver_busy
+AFTER INSERT
+ON rides
+FOR EACH ROW
+BEGIN
+    UPDATE drivers
+    SET status = 'BUSY'
+    WHERE id = NEW.driver_id;
+END //
+DELIMITER ;
+DELIMITER //
+CREATE TRIGGER trg_driver_available
+AFTER UPDATE
+ON rides
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'COMPLETED' THEN
+        UPDATE drivers
+        SET status = 'AVAILABLE'
+        WHERE id = NEW.driver_id;
+    END IF;
+END //
+DELIMITER ;
+
+
+CALL cb_login('999','123');
+CALL cb_login('999','000');
+SELECT * FROM drivers;
+CALL cb_book_ride(
+    1,
+    1,
+    'Patiala',
+    'Chandigarh',
+    50
+);
+SELECT * FROM rides;
+SELECT * FROM payments;
+SELECT * FROM payments;
+SELECT * FROM payments;
